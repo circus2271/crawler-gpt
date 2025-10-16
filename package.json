@@ -4,7 +4,9 @@
   "description": "",
   "main": "download-site-with-assets.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "download-pages": "node index.j",
+    "serve-pages": "http-server public -p 8080"
   },
   "author": "",
   "license": "ISC",
@@ -12,5 +14,8 @@
     "axios": "^1.12.2",
     "cheerio": "^1.1.2",
     "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
   }
 }

@@ -1,11 +1,10 @@
+require('dotenv').config(); // Load environment variables from .env file
+
 const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
-require('dotenv').config(); // Load environment variables from .env file
-
-// const baseURL = 'https://example.com'; // Replace with the desired site
 
 const baseURL = process.env.BASE_URL; // Load base URL from .env file
 if (!baseURL) {
@@ -14,9 +13,10 @@ if (!baseURL) {
 }
 
 const visited = new Set();
-const downloadDir = path.join(__dirname, 'downloaded');
+const downloadDir = path.join(__dirname, 'public'); // Base directory for HTML files
+const assetsDir = path.join(downloadDir, 'assets'); // Directory for assets
 
-// Function to remove the existing 'downloaded' directory
+// Function to remove the existing 'public' directory
 function clearPreviousDownloads() {
     if (fs.existsSync(downloadDir)) {
         fs.rmSync(downloadDir, { recursive: true, force: true });
@@ -33,25 +33,29 @@ async function downloadPage(pageURL) {
         const html = response.data;
 
         // Save HTML to a file
-        const filename = path.join(downloadDir, sanitizeFilename(pageURL) + '.html');
+        const relativePath = pageURL.replace(baseURL, '').replace(/\/$/, '');
+        const filename = path.join(downloadDir, sanitizePath(relativePath) || 'index', 'index.html');
         fs.mkdirSync(path.dirname(filename), { recursive: true });
-        fs.writeFileSync(filename, html);
+        fs.writeFileSync(filename, updateAssetLinks(html));
 
         // Use Cheerio to parse the HTML and find assets
         const $ = cheerio.load(html);
 
         const assetPromises = [];
 
+        // Download images
         $('img').each((i, elem) => {
             const src = $(elem).attr('src');
             if (src) assetPromises.push(downloadAsset(src, pageURL));
         });
 
+        // Download stylesheets
         $('link[rel="stylesheet"]').each((i, elem) => {
             const href = $(elem).attr('href');
             if (href) assetPromises.push(downloadCSS(href, pageURL));
         });
 
+        // Download scripts
         $('script').each((i, elem) => {
             const src = $(elem).attr('src');
             if (src) assetPromises.push(downloadJS(src, pageURL));
@@ -79,7 +83,7 @@ async function downloadCSS(cssURL, pageURL) {
         const fullURL = url.resolve(pageURL, cssURL);
         const response = await axios.get(fullURL);
 
-        const assetPath = path.join(downloadDir, sanitizeFilename(fullURL));
+        const assetPath = path.join(assetsDir, path.basename(fullURL)); // Keep original filename
         fs.mkdirSync(path.dirname(assetPath), { recursive: true });
         fs.writeFileSync(assetPath, response.data);
         console.log(`Downloaded CSS: ${fullURL}`);
@@ -93,7 +97,7 @@ async function downloadJS(jsURL, pageURL) {
         const fullURL = url.resolve(pageURL, jsURL);
         const response = await axios.get(fullURL);
 
-        const assetPath = path.join(downloadDir, sanitizeFilename(fullURL));
+        const assetPath = path.join(assetsDir, path.basename(fullURL)); // Keep original filename
         fs.mkdirSync(path.dirname(assetPath), { recursive: true });
         fs.writeFileSync(assetPath, response.data);
         console.log(`Downloaded JS: ${fullURL}`);
@@ -107,7 +111,7 @@ async function downloadAsset(assetURL, pageURL) {
         const fullURL = url.resolve(pageURL, assetURL);
         const response = await axios.get(fullURL, { responseType: 'arraybuffer' });
 
-        const assetPath = path.join(downloadDir, sanitizeFilename(fullURL));
+        const assetPath = path.join(assetsDir, path.basename(fullURL)); // Keep original filename
         fs.mkdirSync(path.dirname(assetPath), { recursive: true });
         fs.writeFileSync(assetPath, response.data);
         console.log(`Downloaded asset: ${fullURL}`);
@@ -116,7 +120,40 @@ async function downloadAsset(assetURL, pageURL) {
     }
 }
 
-function sanitizeFilename(filePath) {
+function updateAssetLinks(html) {
+    const $ = cheerio.load(html);
+
+    // Update links for stylesheets
+    $('link[rel="stylesheet"]').each((i, elem) => {
+        const href = $(elem).attr('href');
+        if (href) {
+            const assetPath = `/assets/${path.basename(url.resolve(baseURL, href))}`;
+            $(elem).attr('href', assetPath);
+        }
+    });
+
+    // Update links for scripts
+    $('script').each((i, elem) => {
+        const src = $(elem).attr('src');
+        if (src) {
+            const assetPath = `/assets/${path.basename(url.resolve(baseURL, src))}`;
+            $(elem).attr('src', assetPath);
+        }
+    });
+
+    // Update links for images
+    $('img').each((i, elem) => {
+        const src = $(elem).attr('src');
+        if (src) {
+            const assetPath = `/assets/${path.basename(url.resolve(baseURL, src))}`;
+            $(elem).attr('src', assetPath);
+        }
+    });
+
+    return $.html(); // Return the updated HTML
+}
+
+function sanitizePath(filePath) {
     return filePath.replace(/[^a-z0-9/]/gi, '_').toLowerCase();
 }
 
