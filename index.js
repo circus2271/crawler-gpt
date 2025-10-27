@@ -1,4 +1,4 @@
-require('dotenv').config(); // Load environment variables from .env file
+require('dotenv').config();
 
 const axios = require('axios');
 const cheerio = require('cheerio');
@@ -6,17 +6,12 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 
-const baseURL = process.env.BASE_URL; // Load base URL from .env file
-if (!baseURL) {
-    console.error('Error: BASE_URL is not defined in the .env file');
-    process.exit(1);
-}
-
+const baseURL = process.env.BASE_URL;
 const visited = new Set();
-const downloadDir = path.join(__dirname, 'public'); // Base directory for HTML files
-const assetsDir = path.join(downloadDir, 'assets'); // Directory for assets
+const downloadDir = path.join(__dirname, 'public');
+const assetsDir = path.join(downloadDir, 'assets');
 
-// Function to remove the existing 'public' directory
+// Function to clear previous downloads
 function clearPreviousDownloads() {
     if (fs.existsSync(downloadDir)) {
         fs.rmSync(downloadDir, { recursive: true, force: true });
@@ -24,6 +19,7 @@ function clearPreviousDownloads() {
     }
 }
 
+// Download the main page and its assets
 async function downloadPage(pageURL) {
     if (visited.has(pageURL)) return;
     visited.add(pageURL);
@@ -32,15 +28,12 @@ async function downloadPage(pageURL) {
         const response = await axios.get(pageURL);
         const html = response.data;
 
-        // Save HTML to a file
         const relativePath = pageURL.replace(baseURL, '').replace(/\/$/, '');
         const filename = path.join(downloadDir, sanitizePath(relativePath) || 'index', 'index.html');
         fs.mkdirSync(path.dirname(filename), { recursive: true });
         fs.writeFileSync(filename, updateAssetLinks(html));
 
-        // Use Cheerio to parse the HTML and find assets
         const $ = cheerio.load(html);
-
         const assetPromises = [];
 
         // Download images
@@ -78,15 +71,19 @@ async function downloadPage(pageURL) {
     }
 }
 
+// Download CSS and assets
 async function downloadCSS(cssURL, pageURL) {
     try {
         const fullURL = url.resolve(pageURL, cssURL);
         const response = await axios.get(fullURL);
 
-        const assetPath = path.join(assetsDir, path.basename(fullURL)); // Keep original filename
+        const assetPath = path.join(assetsDir, path.basename(fullURL));
         fs.mkdirSync(path.dirname(assetPath), { recursive: true });
         fs.writeFileSync(assetPath, response.data);
         console.log(`Downloaded CSS: ${fullURL}`);
+
+        // Check for HTTPS links in the CSS and download them
+        await downloadCdnResources(response.data, fullURL);
     } catch (error) {
         console.error(`Failed to download CSS ${cssURL}: ${error.message}`);
     }
@@ -97,7 +94,7 @@ async function downloadJS(jsURL, pageURL) {
         const fullURL = url.resolve(pageURL, jsURL);
         const response = await axios.get(fullURL);
 
-        const assetPath = path.join(assetsDir, path.basename(fullURL)); // Keep original filename
+        const assetPath = path.join(assetsDir, path.basename(fullURL));
         fs.mkdirSync(path.dirname(assetPath), { recursive: true });
         fs.writeFileSync(assetPath, response.data);
         console.log(`Downloaded JS: ${fullURL}`);
@@ -111,12 +108,36 @@ async function downloadAsset(assetURL, pageURL) {
         const fullURL = url.resolve(pageURL, assetURL);
         const response = await axios.get(fullURL, { responseType: 'arraybuffer' });
 
-        const assetPath = path.join(assetsDir, path.basename(fullURL)); // Keep original filename
+        const assetPath = path.join(assetsDir, path.basename(fullURL));
         fs.mkdirSync(path.dirname(assetPath), { recursive: true });
         fs.writeFileSync(assetPath, response.data);
         console.log(`Downloaded asset: ${fullURL}`);
     } catch (error) {
         console.error(`Failed to download asset ${assetURL}: ${error.message}`);
+    }
+}
+
+async function downloadCdnResources(cssContent, cssURL) {
+    const cdnRegex = /https:\/\/cdn\.prod\.website-files\.com\/[^\s]+/g; // Adjust this regex for your CDN
+
+    const matches = cssContent.match(cdnRegex);
+    if (matches) {
+        const downloadPromises = matches.map(async (cdnResource) => {
+            await downloadCdnResource(cdnResource);
+        });
+        await Promise.all(downloadPromises);
+    }
+}
+
+async function downloadCdnResource(cdnResource) {
+    try {
+        const response = await axios.get(cdnResource, { responseType: 'arraybuffer' });
+        const assetPath = path.join(assetsDir, path.basename(cdnResource));
+        fs.mkdirSync(path.dirname(assetPath), { recursive: true });
+        fs.writeFileSync(assetPath, response.data);
+        console.log(`Downloaded CDN resource: ${cdnResource}`);
+    } catch (error) {
+        console.error(`Failed to download CDN resource ${cdnResource}: ${error.message}`);
     }
 }
 

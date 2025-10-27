@@ -1,0 +1,17 @@
+curl "https://cdn.prod.website-files.com/5df5719a35688c16780cc730/63f76f8b2ab6add4ba80e9c0_playbutton%20-%20white%20darker%2C%20no%20circle.svg" \
+  -H "accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7" \
+  -H "accept-language: ru-RU,ru;q=0.9,en-CA;q=0.8,en;q=0.7,en-US;q=0.6" \
+  -H "cache-control: no-cache" \
+  -H "dnt: 1" \
+  -H "pragma: no-cache" \
+  -H "priority: u=0, i" \
+  -H "sec-ch-ua: \"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"" \
+  -H "sec-ch-ua-mobile: ?1" \
+  -H "sec-ch-ua-platform: \"Android\"" \
+  -H "sec-fetch-dest: document" \
+  -H "sec-fetch-mode: navigate" \
+  -H "sec-fetch-site: none" \
+  -H "sec-fetch-user: ?1" \
+  -H "sec-gpc: 1" \
+  -H "upgrade-insecure-requests: 1" \
+  -H "user-agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36"
