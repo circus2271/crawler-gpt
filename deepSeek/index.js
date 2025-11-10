@@ -15,6 +15,7 @@ class SiteDownloader {
         this.pendingDownloads = new Set();
         this.failedDownloads = new Set();
         this.successfulDownloads = new Set();
+        this.targetSubfolder = '/ru';
         
         // Statistics
         this.stats = {
@@ -46,7 +47,9 @@ class SiteDownloader {
             maxFileSize: 50 * 1024 * 1024,
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             delayBetweenRequests: 100,
-            skipLargeFiles: true
+            skipLargeFiles: true,
+            downloadAllAssets: true,
+            targetPath: '/ru'
         };
         
         this.axios = axios.create({
@@ -71,6 +74,7 @@ class SiteDownloader {
         
         this.stats.startTime = new Date().toISOString();
         console.log(`Starting download from: ${this.baseUrl}`);
+        console.log(`Target subfolder: ${this.targetSubfolder}`);
         console.log(`Output directory: ${this.outputDir}`);
     }
 
@@ -104,7 +108,8 @@ class SiteDownloader {
     async downloadSite() {
         try {
             await this.init();
-            await this.downloadPage(this.baseUrl, 'index.html');
+            const startUrl = `${this.baseUrl}${this.targetSubfolder}`;
+            await this.downloadPage(startUrl, 'index.html');
             
             await this.retryFailedDownloads();
             
@@ -114,8 +119,8 @@ class SiteDownloader {
             console.log('\n=== Download Summary ===');
             console.log(`Successfully downloaded: ${this.successfulDownloads.size} items`);
             console.log(`Failed downloads: ${this.failedDownloads.size}`);
+            console.log(`Pages saved in: ${this.outputDir}`);
             console.log(`Assets saved in: ${this.assetsDir}`);
-            console.log(`Fonts saved in: ${this.fontsDir}`);
             
         } catch (error) {
             console.error('Error downloading site:', error);
@@ -135,7 +140,7 @@ class SiteDownloader {
 
             const $ = cheerio.load(response.data);
             
-            // Process all assets
+            // Process all assets (from any domain)
             await this.processStylesheets($, url);
             await this.processScripts($, url);
             await this.processImages($, url);
@@ -148,6 +153,7 @@ class SiteDownloader {
             this.rewriteUrls($);
             
             const outputPath = this.getPageOutputPath(url, filename);
+            
             await fs.outputFile(outputPath, $.html());
             
             this.successfulDownloads.add(url);
@@ -173,6 +179,16 @@ class SiteDownloader {
         }
     }
 
+    isTargetPage(url) {
+        try {
+            const urlObj = new URL(url);
+            return urlObj.pathname.startsWith(this.targetSubfolder) || 
+                   urlObj.href.startsWith(`${this.baseUrl}${this.targetSubfolder}`);
+        } catch (error) {
+            return false;
+        }
+    }
+
     async processStylesheets($, baseUrl) {
         const links = $('link[rel="stylesheet"]');
         console.log(`📝 Processing ${links.length} stylesheets`);
@@ -181,9 +197,10 @@ class SiteDownloader {
             const link = $(links[i]);
             const href = link.attr('href');
             
-            if (href && !href.startsWith('data:') && !href.startsWith('assets/')) {
+            if (href && !href.startsWith('data:') && !href.startsWith('/assets/')) {
                 await this.processAsset(href, baseUrl, 'css', (localPath) => {
-                    link.attr('href', `assets/${localPath}`);
+                    // Use root-relative path for assets
+                    link.attr('href', `/assets/${localPath}`);
                 });
             }
         }
@@ -203,9 +220,10 @@ class SiteDownloader {
             const script = $(scripts[i]);
             const src = script.attr('src');
             
-            if (src && !src.startsWith('data:') && !src.startsWith('assets/')) {
+            if (src && !src.startsWith('data:') && !src.startsWith('/assets/')) {
                 await this.processAsset(src, baseUrl, 'js', (localPath) => {
-                    script.attr('src', `assets/${localPath}`);
+                    // Use root-relative path for assets
+                    script.attr('src', `/assets/${localPath}`);
                 });
             }
         }
@@ -219,9 +237,10 @@ class SiteDownloader {
             const img = $(images[i]);
             const src = img.attr('src');
             
-            if (src && !src.startsWith('data:') && !src.startsWith('assets/')) {
+            if (src && !src.startsWith('data:') && !src.startsWith('/assets/')) {
                 await this.processAsset(src, baseUrl, 'images', (localPath) => {
-                    img.attr('src', `assets/${localPath}`);
+                    // Use root-relative path for assets
+                    img.attr('src', `/assets/${localPath}`);
                 });
             }
         }
@@ -246,14 +265,20 @@ class SiteDownloader {
             const href = link.attr('href');
             
             if (href && !href.startsWith('#') && !href.startsWith('javascript:') && 
-                !href.startsWith('mailto:') && !href.startsWith('assets/')) {
+                !href.startsWith('mailto:') && !href.startsWith('/assets/')) {
                 
                 try {
                     const absoluteUrl = new URL(href, baseUrl).href;
-                    if (absoluteUrl.startsWith(this.baseUrl)) {
+                    
+                    // Only download pages that are under /ru subfolder
+                    if (this.isTargetPage(absoluteUrl)) {
                         const filename = this.generateFilename(absoluteUrl, 'html');
                         await this.downloadPage(absoluteUrl, filename);
-                        link.attr('href', this.getRelativePathForLink(absoluteUrl));
+                        // Use root-relative paths for HTML pages
+                        link.attr('href', this.getRootRelativePathForLink(absoluteUrl));
+                    } else {
+                        // For external links or non-/ru pages, keep them as absolute
+                        link.attr('href', absoluteUrl);
                     }
                 } catch (error) {
                     console.error(`Error processing link ${href}:`, error.message);
@@ -270,9 +295,9 @@ class SiteDownloader {
             const video = $(videos[i]);
             const src = video.attr('src');
             
-            if (src && !src.startsWith('data:') && !src.startsWith('assets/')) {
+            if (src && !src.startsWith('data:') && !src.startsWith('/assets/')) {
                 await this.processAsset(src, baseUrl, 'videos', (localPath) => {
-                    video.attr('src', `assets/${localPath}`);
+                    video.attr('src', `/assets/${localPath}`);
                 });
             }
         }
@@ -286,9 +311,9 @@ class SiteDownloader {
             const audio = $(audios[i]);
             const src = audio.attr('src');
             
-            if (src && !src.startsWith('data:') && !src.startsWith('assets/')) {
+            if (src && !src.startsWith('data:') && !src.startsWith('/assets/')) {
                 await this.processAsset(src, baseUrl, 'audio', (localPath) => {
-                    audio.attr('src', `assets/${localPath}`);
+                    audio.attr('src', `/assets/${localPath}`);
                 });
             }
         }
@@ -302,9 +327,9 @@ class SiteDownloader {
             const font = $(fontLinks[i]);
             const href = font.attr('href');
             
-            if (href && !href.startsWith('data:') && !href.startsWith('assets/')) {
+            if (href && !href.startsWith('data:') && !href.startsWith('/assets/')) {
                 await this.processAsset(href, baseUrl, 'fonts', (localPath) => {
-                    font.attr('href', `assets/fonts/${localPath}`);
+                    font.attr('href', `/assets/fonts/${localPath}`);
                 });
             }
         }
@@ -328,9 +353,9 @@ class SiteDownloader {
             const favicon = $(favicons[i]);
             const href = favicon.attr('href');
             
-            if (href && !href.startsWith('data:') && !href.startsWith('assets/')) {
+            if (href && !href.startsWith('data:') && !href.startsWith('/assets/')) {
                 await this.processAsset(href, baseUrl, 'icons', (localPath) => {
-                    favicon.attr('href', `assets/${localPath}`);
+                    favicon.attr('href', `/assets/${localPath}`);
                 });
             }
         }
@@ -396,17 +421,7 @@ class SiteDownloader {
             let extension = this.getFileExtension(assetUrl, response.headers['content-type']);
             
             if (!extension && this.isLikelyHtmlPage(assetUrl, response.headers['content-type'])) {
-                console.log(`🌐 Detected HTML page without extension: ${assetUrl}`);
-                const pagePath = this.getPageOutputPath(assetUrl, 'index.html');
-                await fs.outputFile(pagePath, response.data);
-                
-                this.successfulDownloads.add(assetUrl);
-                this.stats.urls.successful.push({
-                    url: assetUrl,
-                    localPath: pagePath,
-                    type: 'page'
-                });
-                this.stats.successful.pages++;
+                console.log(`⚠️ Skipping HTML page as asset: ${assetUrl}`);
                 return null;
             }
 
@@ -547,7 +562,7 @@ class SiteDownloader {
             
             while ((urlMatch = urlRegex.exec(srcValue)) !== null) {
                 const originalUrl = urlMatch[1];
-                if (!originalUrl.startsWith('data:') && !originalUrl.startsWith('assets/')) {
+                if (!originalUrl.startsWith('data:') && !originalUrl.startsWith('/assets/')) {
                     try {
                         const fontUrl = new URL(originalUrl, baseUrl).href;
                         const localFontPath = await this.downloadFontAsset(fontUrl);
@@ -555,7 +570,7 @@ class SiteDownloader {
                         if (localFontPath) {
                             modifiedSrcValue = modifiedSrcValue.replace(
                                 originalUrl, 
-                                `assets/fonts/${localFontPath}`
+                                `/assets/fonts/${localFontPath}`
                             );
                         }
                     } catch (error) {
@@ -584,7 +599,7 @@ class SiteDownloader {
 
     rewriteCssUrls(cssContent, baseUrl) {
         return cssContent.replace(/url\(['"]?([^'")]+)['"]?\)/gi, (match, url) => {
-            if (url.startsWith('data:') || url.startsWith('#') || url.startsWith('assets/')) {
+            if (url.startsWith('data:') || url.startsWith('#') || url.startsWith('/assets/')) {
                 return match;
             }
             
@@ -594,9 +609,9 @@ class SiteDownloader {
                 
                 if (localPath) {
                     if (this.isFontFile(url)) {
-                        return `url(assets/fonts/${localPath})`;
+                        return `url(/assets/fonts/${localPath})`;
                     }
-                    return `url(assets/${localPath})`;
+                    return `url(/assets/${localPath})`;
                 }
             } catch (error) {
                 // Keep original if URL parsing fails
@@ -614,13 +629,13 @@ class SiteDownloader {
         
         for (const part of parts) {
             const [url, descriptor] = part.trim().split(/\s+/);
-            if (url && !url.startsWith('data:') && !url.startsWith('assets/')) {
+            if (url && !url.startsWith('data:') && !url.startsWith('/assets/')) {
                 try {
                     const assetUrl = new URL(url, baseUrl).href;
                     const localPath = await this.downloadAsset(assetUrl, 'images');
                     
                     if (localPath) {
-                        processedParts.push(`assets/${localPath} ${descriptor || ''}`.trim());
+                        processedParts.push(`/assets/${localPath} ${descriptor || ''}`.trim());
                     } else {
                         processedParts.push(part);
                     }
@@ -640,17 +655,24 @@ class SiteDownloader {
             const $elem = $(elem);
             
             const href = $elem.attr('href');
-            if (href && href.startsWith('http')) {
-                if (href.startsWith(this.baseUrl)) {
-                    const relativePath = this.getRelativePathForLink(href);
-                    $elem.attr('href', relativePath);
-                } else if (this.assetMap.has(href)) {
-                    const localPath = this.assetMap.get(href);
-                    if (this.isFontFile(href)) {
-                        $elem.attr('href', `assets/fonts/${localPath}`);
-                    } else {
-                        $elem.attr('href', `assets/${localPath}`);
+            if (href) {
+                if (href.startsWith('http')) {
+                    if (this.assetMap.has(href)) {
+                        const localPath = this.assetMap.get(href);
+                        if (this.isFontFile(href)) {
+                            $elem.attr('href', `/assets/fonts/${localPath}`);
+                        } else {
+                            $elem.attr('href', `/assets/${localPath}`);
+                        }
+                    } else if (href.startsWith(`${this.baseUrl}${this.targetSubfolder}`)) {
+                        // Convert /ru links to root-relative paths
+                        const rootRelativePath = this.getRootRelativePathForLink(href);
+                        $elem.attr('href', rootRelativePath);
                     }
+                } else if (href.startsWith(`${this.targetSubfolder}/`)) {
+                    // Convert /ru/... links to root-relative paths
+                    const pathWithoutRu = href.substring(this.targetSubfolder.length);
+                    $elem.attr('href', pathWithoutRu);
                 }
             }
             
@@ -658,46 +680,72 @@ class SiteDownloader {
             if (src && src.startsWith('http') && this.assetMap.has(src)) {
                 const localPath = this.assetMap.get(src);
                 if (this.isFontFile(src)) {
-                    $elem.attr('src', `assets/fonts/${localPath}`);
+                    $elem.attr('src', `/assets/fonts/${localPath}`);
                 } else {
-                    $elem.attr('src', `assets/${localPath}`);
+                    $elem.attr('src', `/assets/${localPath}`);
                 }
             }
         });
     }
 
-    getRelativePathForLink(url) {
-        const urlObj = new URL(url);
-        let pathname = urlObj.pathname;
-        
-        if (!pathname || pathname === '/') {
-            return './index.html';
+    getRootRelativePathForLink(url) {
+        try {
+            const urlObj = new URL(url);
+            let pathname = urlObj.pathname;
+            
+            // Remove /ru from the path
+            if (pathname.startsWith(this.targetSubfolder)) {
+                pathname = pathname.substring(this.targetSubfolder.length);
+            }
+            
+            // Ensure path starts with /
+            if (!pathname.startsWith('/')) {
+                pathname = '/' + pathname;
+            }
+            
+            // Handle root path
+            if (pathname === '/') {
+                return '/index.html';
+            }
+            
+            // For paths without extensions, add /index.html
+            if (!path.extname(pathname)) {
+                // Remove trailing slash if present
+                pathname = pathname.replace(/\/$/, '');
+                return `${pathname}/index.html`;
+            }
+            
+            return pathname;
+        } catch (error) {
+            return url;
         }
-        
-        pathname = pathname.replace(/^\/|\/$/g, '');
-        
-        if (path.extname(pathname)) {
-            return `./${pathname}`;
-        }
-        
-        return `./${pathname}/index.html`;
     }
 
     getPageOutputPath(url, filename) {
-        const urlObj = new URL(url);
-        let pathname = urlObj.pathname;
-        pathname = pathname.replace(/^\/|\/$/g, '');
-        
-        if (!pathname || pathname === '/' || pathname === 'index.html') {
-            return path.join(this.outputDir, 'index.html');
+        try {
+            const urlObj = new URL(url);
+            let pathname = urlObj.pathname;
+            
+            // Remove /ru from the path when saving
+            if (pathname.startsWith(this.targetSubfolder)) {
+                pathname = pathname.substring(this.targetSubfolder.length);
+            }
+            
+            pathname = pathname.replace(/^\/|\/$/g, '');
+            
+            if (!pathname || pathname === '/' || pathname === 'index.html') {
+                return path.join(this.outputDir, 'index.html');
+            }
+            
+            if (path.extname(pathname)) {
+                return path.join(this.outputDir, pathname);
+            }
+            
+            const dirPath = path.join(this.outputDir, pathname);
+            return path.join(dirPath, 'index.html');
+        } catch (error) {
+            return path.join(this.outputDir, filename);
         }
-        
-        if (path.extname(pathname)) {
-            return path.join(this.outputDir, pathname);
-        }
-        
-        const dirPath = path.join(this.outputDir, pathname);
-        return path.join(dirPath, 'index.html');
     }
 
     isLikelyHtmlPage(url, contentType) {
@@ -705,14 +753,18 @@ class SiteDownloader {
             return true;
         }
         
-        const urlObj = new URL(url);
-        const pathname = urlObj.pathname;
-        
-        if (!path.extname(pathname) && !pathname.endsWith('/')) {
-            return true;
+        try {
+            const urlObj = new URL(url);
+            const pathname = urlObj.pathname;
+            
+            if (!path.extname(pathname) && !pathname.endsWith('/')) {
+                return true;
+            }
+            
+            return false;
+        } catch (error) {
+            return false;
         }
-        
-        return false;
     }
 
     isFontFile(url) {
@@ -835,7 +887,7 @@ class SiteDownloader {
                 else if (url.match(/\.(js)$/i)) type = 'js';
                 else if (url.match(/\.(jpg|jpeg|png|gif|svg|webp|ico)$/i)) type = 'images';
                 else if (url.match(/\.(woff|woff2|ttf|otf|eot)$/i)) type = 'fonts';
-                else if (this.isLikelyHtmlPage(url, '')) type = 'page';
+                else if (this.isLikelyHtmlPage(url, '') && this.isTargetPage(url)) type = 'page';
                 
                 if (type === 'page') {
                     const filename = this.generateFilename(url, 'html');
@@ -873,6 +925,7 @@ class SiteDownloader {
         const stats = {
             metadata: {
                 baseUrl: this.baseUrl,
+                targetSubfolder: this.targetSubfolder,
                 startTime: this.stats.startTime,
                 endTime: this.stats.endTime,
                 duration: new Date(this.stats.endTime) - new Date(this.stats.startTime)
