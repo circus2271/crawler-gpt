@@ -1,2 +1,8 @@
 // node download-site.js https://example.com
 node index.js https://example.com
+
+a deploy console command: 
+aws --endpoint-url=https://storage.yandexcloud.net \
+  s3 sync ./public s3://mirrored-website
+
+(yes, it's nooby, i know)
