@@ -4,7 +4,14 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "serve-pages": "http-server public -p 8080"
+    "serve-pages": "http-server public -p 8080",
+    "download": "node index.js https://sphere.care",
+    "deploy": "aws --endpoint-url=https://storage.yandexcloud.net s3 sync ./public s3://sphere-music.ru",
+    "sync": "npm run download && npm run deploy",
+    
+    "deploy:sandbox": "aws --endpoint-url=https://storage.yandexcloud.net s3 sync ./public s3://mirrored-website",
+    "sync:sandbox": "npm run download && npm run deploy:sandbox"
+
   },
   "keywords": [],
   "author": "",

@@ -1,8 +1,38 @@
+npm run download - download
+npm run deploy - deploy
+npm run sync - download + deploy
+
+
+
+notes:
+
+if aws sync produces no output, it may be because of everything is already synced
+
+...
+
+other drafts...
+not very useful
+
+
+
+
+
+
 // node download-site.js https://example.com
 node index.js https://example.com
 
-a deploy console command: 
+
+a deploy to a sphere-music.ru bucket (a sphere-music.ru domain)
+aws --endpoint-url=https://storage.yandexcloud.net \
+  s3 sync ./public s3://sphere-music.ru
+
+or
+aws --endpoint-url=https://storage.yandexcloud.net s3 sync ./public s3://sphere-music.ru
+
+or a deploy to mirrored-website bucket:
+
 aws --endpoint-url=https://storage.yandexcloud.net \
   s3 sync ./public s3://mirrored-website
 
-(yes, it's nooby, i know)
+(maybe suitable for a testing purposes)
+
