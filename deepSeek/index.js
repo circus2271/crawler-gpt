@@ -201,10 +201,14 @@ class SiteDownloader {
                 await this.processAsset(href, baseUrl, 'css', (localPath) => {
                     // Use root-relative path for assets
                     link.attr('href', `/assets/${localPath}`);
+                    // Content is rewritten (font URLs), so the original SRI hash
+                    // no longer matches — keeping it makes browsers block the CSS.
+                    link.removeAttr('integrity');
+                    link.removeAttr('crossorigin');
                 });
             }
         }
-        
+
         $('style').each((i, elem) => {
             const styleContent = $(elem).html();
             const modifiedContent = this.rewriteCssUrls(styleContent, baseUrl);
